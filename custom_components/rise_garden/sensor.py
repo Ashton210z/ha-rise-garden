@@ -102,7 +102,7 @@ class RiseGardenWaterSensor(RiseGardenBaseSensor):
         super().__init__(coordinator, garden_id, garden_name)
         self._attr_name = f"{garden_name} Water Level"
         self._attr_unique_id = f"rise_garden_{garden_id}_water"
-        self._attr_device_class = SensorDeviceClass.WATER
+        # No device class: WATER only accepts volume units, not %
         self._attr_state_class = SensorStateClass.MEASUREMENT
         self._attr_icon = "mdi:water"
 

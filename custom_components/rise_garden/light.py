@@ -98,7 +98,7 @@ class RiseGardenLight(CoordinatorEntity, LightEntity):
             light_level = garden.get("light_level")
             if light_level is not None:
                 # Convert 0-100 to 0-255
-                return int(light_level * 2.55)
+                return round(light_level * 2.55)
         return None
 
     @property
@@ -109,9 +109,10 @@ class RiseGardenLight(CoordinatorEntity, LightEntity):
 
     async def async_turn_on(self, **kwargs: Any) -> None:
         """Turn the light on."""
-        brightness = kwargs.get(ATTR_BRIGHTNESS, 255)
+        # Plain "turn on" keeps the current level rather than jumping to 100%
+        brightness = kwargs.get(ATTR_BRIGHTNESS, (self.is_on and self.brightness) or 255)
         # Convert 0-255 to 0-100
-        level = int(brightness / 2.55)
+        level = round(brightness / 2.55)
         level = max(1, min(100, level))  # Ensure 1-100 range
 
         _LOGGER.debug("Setting light level to %s for garden %s", level, self._garden_id)

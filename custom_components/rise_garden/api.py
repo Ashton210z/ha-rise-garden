@@ -1,5 +1,6 @@
 """Rise Gardens API Client."""
 import logging
+import threading
 import time
 import requests
 from typing import Any, Callable
@@ -27,6 +28,9 @@ class RiseGardensAPI:
         self.refresh_token = None
         self.token_expires_at = 0
         self._on_token_refresh: Callable[[str], None] | None = None
+        # Serialises token refreshes: Auth0 rotates refresh tokens, so two
+        # threads refreshing with the same one would invalidate the session.
+        self._token_lock = threading.RLock()
         self.headers = {
             "accept": "application/json",
             "Content-Type": "application/json",
@@ -143,11 +147,12 @@ class RiseGardensAPI:
 
     def _ensure_valid_token(self) -> bool:
         """Ensure we have a valid access token, refreshing if needed."""
-        # Refresh if token expires in less than 5 minutes
-        if time.time() > (self.token_expires_at - 300):
-            _LOGGER.debug("Token expiring soon, refreshing")
-            return self.refresh_access_token()
-        return True
+        with self._token_lock:
+            # Refresh if token expires in less than 5 minutes
+            if time.time() > (self.token_expires_at - 300):
+                _LOGGER.debug("Token expiring soon, refreshing")
+                return self.refresh_access_token()
+            return True
 
     def _api_request(
         self,
@@ -158,6 +163,7 @@ class RiseGardensAPI:
     ) -> requests.Response | None:
         """Make an API request with automatic token refresh on 401."""
         self._ensure_valid_token()
+        token_used = self.access_token
 
         try:
             response = requests.request(method, url, headers=self.headers, timeout=30, **kwargs)
@@ -165,7 +171,13 @@ class RiseGardensAPI:
             # Handle 401 Unauthorized - token may have expired
             if response.status_code == 401 and retry_on_auth_fail:
                 _LOGGER.info("Got 401, attempting token refresh")
-                if self.refresh_access_token():
+                with self._token_lock:
+                    # Another thread may already have refreshed the token
+                    refreshed = (
+                        self.access_token != token_used
+                        or self.refresh_access_token()
+                    )
+                if refreshed:
                     # Retry the request with new token
                     return self._api_request(method, url, retry_on_auth_fail=False, **kwargs)
                 else:

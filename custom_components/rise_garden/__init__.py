@@ -5,6 +5,7 @@ from datetime import timedelta
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import CONF_PASSWORD, CONF_USERNAME
 from homeassistant.core import HomeAssistant
+from homeassistant.exceptions import ConfigEntryNotReady
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 
 from .api import RiseGardensAPI
@@ -52,8 +53,9 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         auth_success = await hass.async_add_executor_job(api.authenticate)
 
     if not auth_success:
-        _LOGGER.error("Failed to authenticate with Rise Gardens")
-        return False
+        # Retried with backoff, so a Rise cloud outage at HA startup recovers
+        # on its own instead of leaving the integration failed until reload.
+        raise ConfigEntryNotReady("Failed to authenticate with Rise Gardens")
 
     # Store refresh token after successful auth
     if api.refresh_token and api.refresh_token != stored_refresh_token:
